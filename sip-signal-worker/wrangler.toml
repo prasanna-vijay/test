@@ -1,0 +1,14 @@
+name = "sip-signal"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[triggers]
+crons = ["0 * * * *"]   # hourly; the code sends only at 8,10,12,14,16 local time
+
+[[kv_namespaces]]
+binding = "SUBS"
+id = "REPLACE_WITH_KV_ID"   # from: npx wrangler kv namespace create SUBS
+
+[vars]
+ALLOWED_ORIGIN = "https://prasanna-vijay.github.io"
+VAPID_SUBJECT = "mailto:you@example.com"   # replace with your own email

@@ -34,14 +34,20 @@ nav button{flex:1;padding:14px;border:0;background:none;color:var(--mut);font-we
 <label>Units</label><div class="seg" id="useg"><button data-u="ml">ml</button><button data-u="oz">oz</button></div>
 <label>Daily goal (<span class="u"></span>)</label><input id="goal" type="number" inputmode="decimal" min="1" step="any">
 <label>Reminders every 2 hrs (8am–4pm)</label><button class="ghost" id="notif">Enable reminders</button>
-<p class="sub" style="text-align:left">Goal target: finish by 5 pm. Reminders only fire while the app is open or recently used (iOS limitation for web apps).</p></div></section>
+<p class="sub" style="text-align:left">Goal target: finish by 5 pm. Reminders are sent by a push server, so they arrive even when the app is closed (after you enable them).</p></div></section>
 </main>
 <nav><button data-t="today" class="on">Today</button><button data-t="trends">Trends</button><button data-t="settings">Settings</button></nav>
 <script>
 const OZ=29.5735,START=8,END=17,$=s=>document.querySelector(s);
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
 let S=load('ss_set',{unit:'oz',goal:2000}),L=load('ss_log',[]),range='day';
-const save=()=>{localStorage.setItem('ss_set',JSON.stringify(S));localStorage.setItem('ss_log',JSON.stringify(L))};
+const WORKER='';// set to your deployed Cloudflare Worker URL, e.g. https://sip-signal.you.workers.dev
+const save=()=>{localStorage.setItem('ss_set',JSON.stringify(S));localStorage.setItem('ss_log',JSON.stringify(L));sync()};
+const iso=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const b64=s=>{s=(s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
+async function post(path,body){const r=await fetch(WORKER+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return r.ok}
+async function sync(){try{if(!WORKER||localStorage.getItem('ss_push')!=='1')return;const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();if(!sub)return;
+ await post('/subscribe',{subscription:sub.toJSON(),tz:Intl.DateTimeFormat().resolvedOptions().timeZone,goalMl:S.goal,loggedMl:dayMl(Date.now()),date:iso(Date.now()),unit:S.unit})}catch(e){}}
 const toU=ml=>S.unit==='oz'?ml/OZ:ml, toMl=v=>S.unit==='oz'?v*OZ:v;
 const fmt=ml=>Math.round(toU(ml)*10)/10+' '+S.unit;
 const dkey=d=>{d=new Date(d);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()};
@@ -77,8 +83,12 @@ $('#goal').onchange=e=>{const v=parseFloat(e.target.value);if(v>0){S.goal=toMl(v
 $('#useg').onclick=e=>{if(e.target.dataset.u){S.unit=e.target.dataset.u;save();render()}};
 $('#seg').onclick=e=>{if(e.target.dataset.r){range=e.target.dataset.r;document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b===e.target));chart()}};
 document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;document.querySelectorAll('section').forEach(s=>s.classList.toggle('hide',s.id!==t));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===e.target));render()};
-$('#notif').onclick=async()=>{const r=await Notification.requestPermission();$('#notif').textContent=r==='granted'?'Reminders enabled ✓':'Permission denied'};
-function remind(){if(!('Notification'in window)||Notification.permission!=='granted')return;
+$('#notif').onclick=async()=>{try{const r=await Notification.requestPermission();if(r!=='granted'){$('#notif').textContent='Permission denied';return}
+ if(WORKER){const reg=await navigator.serviceWorker.ready,key=await (await fetch(WORKER+'/vapid')).text();
+  const sub=await reg.pushManager.getSubscription()||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(key.trim())});
+  localStorage.setItem('ss_push','1');await sync()}
+ $('#notif').textContent='Reminders enabled ✓'}catch(e){$('#notif').textContent='Error: '+e.message}};
+function remind(){if(localStorage.getItem('ss_push')==='1')return;if(!('Notification'in window)||Notification.permission!=='granted')return;
  const n=new Date(),h=n.getHours(),k='ss_rem_'+dkey(n)+'_'+h;
  if(h>=START&&h<END&&(h-START)%2===0&&!localStorage.getItem(k)){localStorage.setItem(k,1);const left=S.goal-dayMl(n);if(left>0)navigator.serviceWorker.ready.then(r=>r.showNotification('Sip Signal 💧',{body:'Time to drink! '+fmt(left)+' left to hit your goal by 5 pm.',icon:'icon-192.png'}))}}
 setInterval(()=>{remind();render()},60000);document.addEventListener('visibilitychange',()=>{remind();render()});
