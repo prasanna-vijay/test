@@ -1,0 +1,87 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sip Signal</title>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Sip Signal">
+<meta name="theme-color" content="#1e88e5">
+<style>
+:root{--bg:#f4f9fc;--card:#fff;--tx:#12303f;--mut:#6b8794;--ac:#1e88e5;--ln:#dbe8ef}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1a21;--card:#16262f;--tx:#e6f1f6;--mut:#8aa4b1;--ln:#243844}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px -apple-system,system-ui,sans-serif;padding-bottom:80px}
+main{max-width:480px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 16px) 16px}
+h1{font-size:22px;margin:0 0 16px}.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:14px}
+.ring{display:block;margin:0 auto}.big{font-size:30px;font-weight:700;text-align:center}.sub{color:var(--mut);text-align:center;font-size:14px;margin-top:4px}
+.row{display:flex;gap:8px}button,input{font:inherit}
+.add{flex:1;padding:14px 4px;border:0;border-radius:12px;background:var(--ac);color:#fff;font-weight:600}
+.add small{display:block;font-weight:400;opacity:.85;font-size:12px}
+input{width:100%;padding:12px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--tx)}
+.ghost{padding:12px 16px;border:1px solid var(--ac);background:none;color:var(--ac);border-radius:10px;font-weight:600}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:14px;border:0;background:none;color:var(--mut);font-weight:600}nav button.on{color:var(--ac)}
+.seg{display:flex;border:1px solid var(--ln);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;padding:8px;border:0;background:none;color:var(--tx)}.seg button.on{background:var(--ac);color:#fff}
+.log{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--ln);font-size:15px}
+.log button{border:0;background:none;color:#e53935}.hide{display:none}label{display:block;color:var(--mut);font-size:13px;margin:10px 0 4px}
+</style></head><body><main>
+<section id="today"><h1>💧 Sip Signal</h1>
+<div class="card"><svg class="ring" width="180" height="180" viewBox="0 0 180 180"><circle cx="90" cy="90" r="78" fill="none" stroke="var(--ln)" stroke-width="14"/><circle id="arc" cx="90" cy="90" r="78" fill="none" stroke="var(--ac)" stroke-width="14" stroke-linecap="round" transform="rotate(-90 90 90)" stroke-dasharray="490" stroke-dashoffset="490"/><text id="pct" x="90" y="100" text-anchor="middle" font-size="34" font-weight="700" fill="var(--tx)">0%</text></svg>
+<div class="big" id="amt"></div><div class="sub" id="pace"></div></div>
+<div class="card"><div class="row"><button class="add" data-oz="4">+½ cup<small>4 oz</small></button><button class="add" data-oz="8">+1 cup<small>8 oz</small></button><button class="add" data-oz="16">+2 cups<small>16 oz</small></button></div>
+<div class="row" style="margin-top:10px"><input id="cust" type="number" inputmode="decimal" min="0" step="any"><button class="ghost" id="addc">Add</button></div></div>
+<div class="card"><b>Today's log</b><div id="log"></div></div></section>
+<section id="trends" class="hide"><h1>Trends</h1><div class="card"><div class="seg" id="seg"><button data-r="day" class="on">Day</button><button data-r="week">Week</button><button data-r="month">Month</button></div><svg id="chart" width="100%" height="220"></svg><div class="sub" id="avg"></div></div></section>
+<section id="settings" class="hide"><h1>Settings</h1><div class="card">
+<label>Units</label><div class="seg" id="useg"><button data-u="ml">ml</button><button data-u="oz">oz</button></div>
+<label>Daily goal (<span class="u"></span>)</label><input id="goal" type="number" inputmode="decimal" min="1" step="any">
+<label>Reminders every 2 hrs (8am–4pm)</label><button class="ghost" id="notif">Enable reminders</button>
+<p class="sub" style="text-align:left">Goal target: finish by 5 pm. Reminders only fire while the app is open or recently used (iOS limitation for web apps).</p></div></section>
+</main>
+<nav><button data-t="today" class="on">Today</button><button data-t="trends">Trends</button><button data-t="settings">Settings</button></nav>
+<script>
+const OZ=29.5735,START=8,END=17,$=s=>document.querySelector(s);
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
+let S=load('ss_set',{unit:'oz',goal:2000}),L=load('ss_log',[]),range='day';
+const save=()=>{localStorage.setItem('ss_set',JSON.stringify(S));localStorage.setItem('ss_log',JSON.stringify(L))};
+const toU=ml=>S.unit==='oz'?ml/OZ:ml, toMl=v=>S.unit==='oz'?v*OZ:v;
+const fmt=ml=>Math.round(toU(ml)*10)/10+' '+S.unit;
+const dkey=d=>{d=new Date(d);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()};
+const dayMl=d=>L.filter(e=>dkey(e.t)===dkey(d)).reduce((a,e)=>a+e.ml,0);
+function add(ml){if(ml>0){L.push({t:Date.now(),ml});save();render()}}
+function render(){
+ const tot=dayMl(Date.now()),p=Math.min(1,tot/S.goal);
+ $('#arc').style.strokeDashoffset=490*(1-p);$('#pct').textContent=Math.round(p*100)+'%';
+ $('#amt').textContent=fmt(tot)+' / '+fmt(S.goal);
+ const h=new Date().getHours()+new Date().getMinutes()/60,exp=S.goal*Math.min(1,Math.max(0,(h-START)/(END-START)));
+ $('#pace').textContent=tot>=S.goal?'Goal reached 🎉':h>=END?'Goal time passed: '+fmt(S.goal-tot)+' short':tot>=exp?'On track for 5 pm':'Behind pace — drink '+fmt(exp-tot)+' to catch up';
+ $('#log').innerHTML=L.filter(e=>dkey(e.t)===dkey(Date.now())).reverse().map(e=>`<div class="log"><span>${new Date(e.t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})} · ${fmt(e.ml)}</span><button data-d="${e.t}">✕</button></div>`).join('')||'<div class="sub">Nothing yet</div>';
+ $('#cust').placeholder='Custom amount ('+S.unit+')';
+ document.querySelectorAll('.u').forEach(e=>e.textContent=S.unit);$('#goal').value=Math.round(toU(S.goal)*10)/10;
+ document.querySelectorAll('#useg button').forEach(b=>b.classList.toggle('on',b.dataset.u===S.unit));
+ chart();
+}
+function chart(){
+ const now=new Date();let bars=[];
+ if(range==='day'){for(let i=0;i<24;i++)bars.push({l:i%6===0?i:'',v:L.filter(e=>dkey(e.t)===dkey(now)&&new Date(e.t).getHours()===i).reduce((a,e)=>a+e.ml,0)})}
+ else{const n=range==='week'?7:30;for(let i=n-1;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);bars.push({l:range==='week'?d.toLocaleDateString([],{weekday:'short'}):(i%5===0?d.getDate():''),v:dayMl(d)})}}
+ const W=320,H=220,pb=24,mx=Math.max(...bars.map(b=>b.v),range==='day'?1:S.goal),bw=W/bars.length;
+ let s='';bars.forEach((b,i)=>{const h=(H-pb-8)*b.v/mx;s+=`<rect x="${i*bw+bw*.15}" y="${H-pb-h}" width="${bw*.7}" height="${h}" rx="3" fill="var(--ac)" opacity="${range!=='day'&&b.v<S.goal?.55:1}"/><text x="${i*bw+bw/2}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--mut)">${b.l}</text>`});
+ if(range!=='day'){const y=H-pb-(H-pb-8)*S.goal/mx;s+=`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="var(--mut)" stroke-dasharray="4"/>`}
+ $('#chart').setAttribute('viewBox',`0 0 ${W} ${H}`);$('#chart').innerHTML=s;
+ const vals=bars.map(b=>b.v);const tot=vals.reduce((a,b)=>a+b,0);
+ $('#avg').textContent=range==='day'?'Today: '+fmt(tot)+' (by hour)':'Avg/day: '+fmt(tot/vals.length)+' · Goal met '+vals.filter(v=>v>=S.goal).length+'/'+vals.length+' days';
+}
+document.querySelectorAll('.add').forEach(b=>b.onclick=()=>add(b.dataset.oz*OZ));
+$('#addc').onclick=()=>{add(toMl(parseFloat($('#cust').value)));$('#cust').value=''};
+$('#log').onclick=e=>{const t=e.target.dataset.d;if(t){L=L.filter(x=>String(x.t)!==t);save();render()}};
+$('#goal').onchange=e=>{const v=parseFloat(e.target.value);if(v>0){S.goal=toMl(v);save();render()}};
+$('#useg').onclick=e=>{if(e.target.dataset.u){S.unit=e.target.dataset.u;save();render()}};
+$('#seg').onclick=e=>{if(e.target.dataset.r){range=e.target.dataset.r;document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b===e.target));chart()}};
+document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;document.querySelectorAll('section').forEach(s=>s.classList.toggle('hide',s.id!==t));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===e.target));render()};
+$('#notif').onclick=async()=>{const r=await Notification.requestPermission();$('#notif').textContent=r==='granted'?'Reminders enabled ✓':'Permission denied'};
+function remind(){if(!('Notification'in window)||Notification.permission!=='granted')return;
+ const n=new Date(),h=n.getHours(),k='ss_rem_'+dkey(n)+'_'+h;
+ if(h>=START&&h<END&&(h-START)%2===0&&!localStorage.getItem(k)){localStorage.setItem(k,1);const left=S.goal-dayMl(n);if(left>0)navigator.serviceWorker.ready.then(r=>r.showNotification('Sip Signal 💧',{body:'Time to drink! '+fmt(left)+' left to hit your goal by 5 pm.',icon:'icon-192.png'}))}}
+setInterval(()=>{remind();render()},60000);document.addEventListener('visibilitychange',()=>{remind();render()});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+render();remind();
+</script></body></html>
